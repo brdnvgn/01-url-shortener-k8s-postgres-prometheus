@@ -36,10 +36,27 @@ base de données stateful et observabilité, le tout en local sans coût cloud.
 
 ## Prérequis
 
+- **Python 3.13** + [Poetry](https://python-poetry.org/) (gestion des dépendances)
 - **Docker** (pour builder l'image)
 - **Un cluster local** : [minikube](https://minikube.sigs.k8s.io/) ou [kind](https://kind.sigs.k8s.io/)
 - **kubectl** installé
 - (Optionnel) **Helm** pour installer Prometheus via le chart `kube-prometheus-stack`
+
+## Setup local (Poetry)
+
+```bash
+# Utiliser Python 3.13
+poetry env use 3.13
+
+# Installer les dépendances (prod + dev)
+poetry install
+
+# Activer le shell du venv (optionnel)
+poetry shell
+
+# Lancer l'API en local (une fois l'app écrite)
+poetry run uvicorn url_shortener.main:app --reload --host 0.0.0.0 --port 8000
+```
 
 ## Le service (spécification fonctionnelle)
 
@@ -80,8 +97,11 @@ CREATE TABLE links (
 
 ```
 01-url-shortener-k8s-postgres-prometheus/
+├── pyproject.toml          # Poetry + dépendances Python 3.13
+├── poetry.lock
 ├── app/                    # code de l'API + Dockerfile
 │   ├── src/
+│   │   └── url_shortener/
 │   └── Dockerfile
 ├── k8s/
 │   ├── postgres-statefulset.yaml
