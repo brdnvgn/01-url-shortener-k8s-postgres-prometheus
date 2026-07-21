@@ -1,0 +1,35 @@
+[project]
+name = "url-shortener"
+version = "0.1.0"
+description = "API de raccourcissement d'URL (FastAPI) pour Kubernetes + PostgreSQL + Prometheus"
+authors = [
+    {name = "Brandon"}
+]
+readme = "README.md"
+requires-python = "^3.13"
+dependencies = [
+    "fastapi (>=0.139.2,<0.140.0)",
+    "uvicorn[standard] (>=0.51.0,<0.52.0)",
+    "prometheus-client (>=0.25.0,<0.26.0)",
+    "asyncpg (>=0.31.0,<0.32.0)",
+    "pydantic-settings (>=2.14.2,<3.0.0)",
+]
+
+[dependency-groups]
+dev = [
+    "httpx (>=0.28.1,<0.29.0)",
+    "pytest (>=9.1.1,<10.0.0)",
+    "pytest-asyncio (>=1.4.0,<2.0.0)",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{ include = "url_shortener", from = "app/src" }]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
