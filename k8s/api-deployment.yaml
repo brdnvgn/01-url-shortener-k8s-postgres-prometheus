@@ -26,7 +26,7 @@ spec:
             - sh
             - -c
             - |
-              until pg_isready -h postgres -p 5432 -U postgres; do
+              until pg_isready -h postgres -p 5432 -U postgres -d url_shortener; do
                 echo "waiting for postgres..."; sleep 2;
               done
       containers:
