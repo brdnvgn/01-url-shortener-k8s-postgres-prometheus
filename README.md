@@ -1,32 +1,32 @@
-# Projet 01 — Raccourcisseur d'URL sur Kubernetes
+# Project 01 — URL Shortener on Kubernetes
 
-> **Outils croisés :** Kubernetes · PostgreSQL · Prometheus
+> **Tools covered:** Kubernetes · PostgreSQL · Prometheus
 
-## Objectif
+## Goal
 
-Construire une petite API de **raccourcissement d'URL** (type Bitly minimaliste), la
-**conteneuriser**, la **déployer sur Kubernetes**, la faire persister dans **PostgreSQL**
-et **superviser** ses métriques avec **Prometheus**.
+Build a small **URL shortening** API (a minimal Bitly-like service), **containerize**
+it, **deploy it to Kubernetes**, persist its data in **PostgreSQL**, and **monitor**
+its metrics with **Prometheus**.
 
-C'est le projet idéal pour découvrir le cœur du travail DevOps : conteneurs, orchestration,
-base de données stateful et observabilité, le tout en local sans coût cloud.
+This is the ideal project to discover the heart of DevOps work: containers, orchestration,
+a stateful database, and observability, all locally with no cloud cost.
 
-## Ce que tu vas apprendre
+## What you'll learn
 
-| Outil          | Notions abordées |
+| Tool           | Topics covered |
 |----------------|------------------|
 | **Kubernetes** | Pods, Deployments, Services, ConfigMap/Secret, Ingress, `kubectl`, readiness/liveness probes |
-| **PostgreSQL** | StatefulSet, PersistentVolumeClaim, variables d'environnement, migrations simples |
-| **Prometheus** | Exposition de métriques `/metrics`, scraping, PromQL de base, alertes simples |
+| **PostgreSQL** | StatefulSet, PersistentVolumeClaim, environment variables, simple migrations |
+| **Prometheus** | Exposing `/metrics`, scraping, basic PromQL, simple alerts |
 
 ## Architecture
 
 ```
                    ┌─────────────────────────────────────────┐
-                   │              Cluster Kubernetes           │
+                   │              Kubernetes Cluster          │
                    │                                           │
-  navigateur  ───► │  Ingress ─► Service ─► Deployment (API)   │
-                   │                          │  expose /metrics│
+  browser      ───► │  Ingress ─► Service ─► Deployment (API)   │
+                   │                          │  exposes /metrics│
                    │                          ▼                 │
                    │                    PostgreSQL (StatefulSet)│
                    │                                           │
@@ -34,40 +34,41 @@ base de données stateful et observabilité, le tout en local sans coût cloud.
                    └─────────────────────────────────────────┘
 ```
 
-## Prérequis
+## Prerequisites
 
-- **Python 3.13** + [Poetry](https://python-poetry.org/) (gestion des dépendances)
-- **Docker** (pour builder l'image)
-- **Un cluster local** : [minikube](https://minikube.sigs.k8s.io/) ou [kind](https://kind.sigs.k8s.io/)
-- **kubectl** installé
-- (Optionnel) **Helm** pour installer Prometheus via le chart `kube-prometheus-stack`
+- **Python 3.13** + [Poetry](https://python-poetry.org/) (dependency management)
+- **Docker** (to build the image)
+- **A local cluster**: [minikube](https://minikube.sigs.k8s.io/) or [kind](https://kind.sigs.k8s.io/)
+- **kubectl** installed
+- (Optional) **Helm** to install Prometheus via the `kube-prometheus-stack` chart
 
-## Setup local (Poetry)
+## Local setup (Poetry)
 
 ```bash
-# Utiliser Python 3.13
+# Use Python 3.13
 poetry env use 3.13
 
-# Installer les dépendances (prod + dev)
+# Install dependencies (prod + dev)
 poetry install
 
-# Activer le shell du venv (optionnel)
+# Activate the venv shell (optional)
 poetry shell
 
-# Lancer l'API en local (une fois l'app écrite)
+# Run the API locally (once the app is written)
 poetry run uvicorn url_shortener.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## Le service (spécification fonctionnelle)
+## The service (functional spec)
 
-API REST minimale (Node/Express, Go ou Python/FastAPI — au choix) :
+Minimal REST API (Node/Express, Go, or Python/FastAPI — your choice):
 
-- `POST /shorten` → `{ "url": "https://exemple.com/page" }` renvoie `{ "code": "ab12cd" }`
-- `GET /{code}` → redirige (HTTP 302) vers l'URL d'origine
-- `GET /metrics` → métriques au format Prometheus (nombre de liens créés, redirections, latence)
-- `GET /healthz` → sonde de santé pour Kubernetes
+- `POST /shorten` → `{ "url": "https://example.com/page" }` returns `{ "code": "ab12cd" }`
+- `GET /{code}` → redirects (HTTP 302) to the original URL
+- `GET /metrics` → metrics in Prometheus format (links created, redirects, latency)
+- `GET /healthz` → liveness probe for Kubernetes (process up, no dependency on PostgreSQL)
+- `GET /readyz` → readiness probe for Kubernetes (checks PostgreSQL connectivity)
 
-Table PostgreSQL :
+PostgreSQL table:
 
 ```sql
 CREATE TABLE links (
@@ -78,28 +79,28 @@ CREATE TABLE links (
 );
 ```
 
-## Étapes du projet
+## Project steps
 
-1. **Écrire l'application** avec un endpoint `/metrics` (utiliser un client Prometheus :
-   `prom-client` en Node, `prometheus_client` en Python, etc.).
-2. **Écrire le `Dockerfile`** et builder l'image (`docker build -t url-shortener:0.1 .`).
-   Charger l'image dans minikube/kind (`minikube image load ...` ou `kind load docker-image ...`).
-3. **Déployer PostgreSQL** via un `StatefulSet` + `PersistentVolumeClaim` + `Service`.
-   Stocker le mot de passe dans un `Secret`.
-4. **Déployer l'API** via un `Deployment` (2 réplicas) + `Service` + `Ingress`.
-   Injecter la connexion DB via `ConfigMap`/`Secret`, ajouter les probes `readiness`/`liveness`.
-5. **Installer Prometheus** (chart `kube-prometheus-stack`) et déclarer un `ServiceMonitor`
-   pour scraper l'API.
-6. **Vérifier** : créer des liens, générer du trafic, observer les métriques dans Prometheus
-   (ex. `rate(shortener_redirects_total[1m])`).
+1. **Write the application** with a `/metrics` endpoint (use a Prometheus client:
+   `prom-client` in Node, `prometheus_client` in Python, etc.).
+2. **Write the `Dockerfile`** and build the image (`docker build -t url-shortener:0.1 .`).
+   Load the image into minikube/kind (`minikube image load ...` or `kind load docker-image ...`).
+3. **Deploy PostgreSQL** via a `StatefulSet` + `PersistentVolumeClaim` + `Service`.
+   Store the password in a `Secret`.
+4. **Deploy the API** via a `Deployment` (2 replicas) + `Service` + `Ingress`.
+   Inject the DB connection via `ConfigMap`/`Secret`, add `readiness`/`liveness` probes.
+5. **Install Prometheus** (`kube-prometheus-stack` chart) and declare a `ServiceMonitor`
+   to scrape the API.
+6. **Verify**: create links, generate traffic, observe the metrics in Prometheus
+   (e.g. `rate(shortener_redirects_total[1m])`).
 
-## Arborescence cible
+## Target file tree
 
 ```
 01-url-shortener-k8s-postgres-prometheus/
-├── pyproject.toml          # Poetry + dépendances Python 3.13
+├── pyproject.toml          # Poetry + Python 3.13 dependencies
 ├── poetry.lock
-├── app/                    # code de l'API + Dockerfile
+├── app/                    # API code + Dockerfile
 │   ├── src/
 │   │   └── url_shortener/
 │   └── Dockerfile
@@ -115,15 +116,15 @@ CREATE TABLE links (
     └── servicemonitor.yaml
 ```
 
-## Extensions possibles
+## Possible extensions
 
-- Ajouter du **cache Redis** devant PostgreSQL pour les redirections.
-- Ajouter un **HorizontalPodAutoscaler** basé sur la charge CPU.
-- Ajouter **Grafana** pour visualiser les métriques Prometheus.
-- Ajouter un pipeline **Jenkins** (voir projet 02) pour builder/déployer automatiquement.
+- Add a **Redis cache** in front of PostgreSQL for redirects.
+- Add a **HorizontalPodAutoscaler** based on CPU load.
+- Add **Grafana** to visualize Prometheus metrics.
+- Add a **Jenkins** pipeline (see project 02) to build/deploy automatically.
 
-## Critères de réussite
+## Success criteria
 
-- [ ] L'API répond derrière l'Ingress.
-- [ ] Les données survivent au redémarrage d'un Pod PostgreSQL (persistance OK).
-- [ ] Prometheus scrape bien `/metrics` et les compteurs augmentent.
+- [ ] The API responds behind the Ingress.
+- [ ] Data survives a PostgreSQL Pod restart (persistence OK).
+- [ ] Prometheus correctly scrapes `/metrics` and the counters increase.
