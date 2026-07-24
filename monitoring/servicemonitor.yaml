@@ -1,0 +1,22 @@
+# Tells the Prometheus Operator (kube-prometheus-stack) to scrape the API's
+# /metrics endpoint. The `release: monitoring` label is required so the
+# operator's default serviceMonitorSelector picks this object up.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: url-shortener-api
+  namespace: url-shortener
+  labels:
+    release: monitoring
+    app.kubernetes.io/part-of: url-shortener
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: url-shortener-api
+  namespaceSelector:
+    matchNames:
+      - url-shortener
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
