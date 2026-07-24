@@ -242,6 +242,20 @@ jobs:
       - name: Apply ServiceMonitor
         run: kubectl apply -f monitoring/servicemonitor.yaml
 
+      - name: Wait for the Prometheus pod
+        run: |
+          # helm --wait only waits for the operator Deployment; the actual
+          # Prometheus pod is created asynchronously afterwards by the
+          # operator reconciling the Prometheus custom resource.
+          for i in $(seq 1 20); do
+            kubectl -n monitoring get pod -l app.kubernetes.io/name=prometheus \
+              --no-headers 2>/dev/null | grep -q . && break
+            sleep 3
+          done
+          kubectl -n monitoring wait --for=condition=Ready pod \
+            -l app.kubernetes.io/name=prometheus \
+            --timeout=180s
+
       - name: Generate traffic
         run: |
           for i in $(seq 1 10); do
