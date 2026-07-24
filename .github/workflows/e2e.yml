@@ -172,7 +172,17 @@ jobs:
           kubectl apply -f k8s/secret.yaml -f k8s/configmap.yaml
           kubectl apply -f k8s/postgres-statefulset.yaml -f k8s/postgres-service.yaml
           kubectl apply -f k8s/api-deployment.yaml -f k8s/api-service.yaml
-          kubectl apply -f k8s/ingress.yaml
+
+      - name: Apply Ingress
+        run: |
+          # Even once its pod is Ready, the ingress-nginx admission webhook
+          # Service can take a few extra seconds for kube-proxy to route to,
+          # so the validating webhook call can transiently be refused.
+          for i in $(seq 1 15); do
+            kubectl apply -f k8s/ingress.yaml && break
+            sleep 3
+          done
+          kubectl get ingress -n url-shortener url-shortener
 
       - name: Wait for rollout
         run: |
@@ -284,14 +294,21 @@ jobs:
 
       - name: Dump diagnostics on failure
         if: failure()
+        # Best-effort: some resources/containers may not exist yet depending
+        # on where the job failed, so don't let one missing piece hide the
+        # rest of the diagnostics.
         run: |
+          echo "--- ingress-nginx pods ---"
+          kubectl -n ingress-nginx get pods -o wide || true
           echo "--- url-shortener pods ---"
-          kubectl -n url-shortener get pods -o wide
+          kubectl -n url-shortener get pods -o wide || true
           echo "--- url-shortener describe ---"
-          kubectl -n url-shortener describe pods
+          kubectl -n url-shortener describe pods || true
+          echo "--- ingress ---"
+          kubectl -n url-shortener get ingress -o wide || true
           echo "--- api logs ---"
-          kubectl -n url-shortener logs -l app.kubernetes.io/name=url-shortener-api --all-containers --tail=200
+          kubectl -n url-shortener logs -l app.kubernetes.io/name=url-shortener-api --all-containers --tail=200 || true
           echo "--- postgres logs ---"
-          kubectl -n url-shortener logs postgres-0 --tail=200
+          kubectl -n url-shortener logs postgres-0 --tail=200 || true
           echo "--- monitoring pods ---"
-          kubectl -n monitoring get pods -o wide
+          kubectl -n monitoring get pods -o wide || true
