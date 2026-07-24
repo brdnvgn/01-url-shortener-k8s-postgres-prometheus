@@ -178,10 +178,15 @@ jobs:
           # Even once its pod is Ready, the ingress-nginx admission webhook
           # Service can take a few extra seconds for kube-proxy to route to,
           # so the validating webhook call can transiently be refused.
+          applied=false
           for i in $(seq 1 15); do
-            kubectl apply -f k8s/ingress.yaml && break
+            kubectl apply -f k8s/ingress.yaml && { applied=true; break; }
             sleep 3
           done
+          if [ "$applied" != "true" ]; then
+            echo "Failed to apply Ingress after retries" >&2
+            exit 1
+          fi
           kubectl get ingress -n url-shortener url-shortener
 
       - name: Wait for rollout
@@ -281,27 +286,33 @@ jobs:
           # The operator has to notice the new ServiceMonitor, regenerate
           # Prometheus' config, have the config-reloader sidecar pick it up,
           # and then wait for the next scrape (15s interval) -- give it a
-          # generous window rather than a fixed sleep.
+          # generous window rather than a fixed sleep. There are 2 API
+          # replicas, so check across all discovered targets (not just the
+          # first, whose order isn't guaranteed) and require at least one up.
+          up_count=0
           for i in $(seq 1 40); do
-            up=$( (curl -s http://localhost:9090/api/v1/targets \
-              | jq -r '.data.activeTargets[]
-                       | select(.labels.namespace=="url-shortener")
-                       | .health' | head -n1) || true)
-            [ "$up" = "up" ] && break
+            up_count=$( (curl -s http://localhost:9090/api/v1/targets \
+              | jq -r '[.data.activeTargets[]
+                        | select(.labels.namespace=="url-shortener")
+                        | select(.health=="up")] | length') || echo 0)
+            [ "$up_count" -gt 0 ] && break
             sleep 5
           done
-          if [ "$up" != "up" ]; then
+          if [ "$up_count" -eq 0 ]; then
             echo "::group::Prometheus active targets (debug)"
             curl -s http://localhost:9090/api/v1/targets | jq .
             echo "::endgroup::"
           fi
-          test "$up" = "up"
+          test "$up_count" -gt 0
 
       - name: Assert shortener_links_created_total increased
         run: |
+          # The counter is per-process, so with 2 API replicas the traffic
+          # generated above can land on either pod. Sum across every
+          # returned series rather than only inspecting the first one.
           for i in $(seq 1 20); do
             value=$( (curl -s 'http://localhost:9090/api/v1/query' \
-              --data-urlencode 'query=shortener_links_created_total' \
+              --data-urlencode 'query=sum(shortener_links_created_total)' \
               | jq -r '.data.result[0].value[1] // "0"') || echo 0)
             python3 -c "exit(0 if float('$value') > 0 else 1)" && break
             sleep 5
