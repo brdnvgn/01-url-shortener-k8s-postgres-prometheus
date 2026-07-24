@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -24,7 +24,18 @@ app = FastAPI(title="URL Shortener", lifespan=lifespan)
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-    """Health probe for Kubernetes (liveness/readiness)."""
+    """Health probe for Kubernetes (liveness/readiness).
+
+    Verifies the PostgreSQL pool can actually serve a query, since /shorten
+    and GET /{code} both depend on it: readiness must not report "ok" while
+    the app is unable to serve core traffic.
+    """
+    try:
+        pool = db.get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("SELECT 1")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database unavailable.") from exc
     return {"status": "ok"}
 
 

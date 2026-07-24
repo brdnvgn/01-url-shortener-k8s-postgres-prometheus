@@ -9,6 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import HttpUrl, TypeAdapter
 
+from url_shortener.config import settings
+
 pytestmark = pytest.mark.usefixtures("clean_db")
 
 CODE_REGEX = re.compile(r"^[0-9A-Za-z]{1,10}$")
@@ -54,3 +56,37 @@ def test_shorten_created_short_url_actually_resolves(client: TestClient) -> None
 
     assert redirect_response.status_code == 302
     assert redirect_response.headers["location"] == long_url
+
+
+def test_shorten_uses_x_forwarded_host_over_internal_base_url(client: TestClient) -> None:
+    """Behind a reverse proxy/Ingress, short_url must use the public host from
+    X-Forwarded-Host/X-Forwarded-Proto instead of the internal ASGI base_url.
+    """
+    response = client.post(
+        "/shorten",
+        json={"url": "https://example.com/proxied"},
+        headers={"X-Forwarded-Host": "short.example.com", "X-Forwarded-Proto": "https"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["short_url"] == f"https://short.example.com/{body['code']}"
+
+
+def test_shorten_uses_configured_public_base_url_over_forwarded_headers(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An explicitly configured PUBLIC_BASE_URL must take precedence over
+    forwarded headers and the raw request base URL.
+    """
+    monkeypatch.setattr(settings, "public_base_url", "https://configured.example.com")
+
+    response = client.post(
+        "/shorten",
+        json={"url": "https://example.com/configured"},
+        headers={"X-Forwarded-Host": "should-be-ignored.example.com"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["short_url"] == f"https://configured.example.com/{body['code']}"
