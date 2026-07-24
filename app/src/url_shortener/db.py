@@ -1,4 +1,4 @@
-"""Gestion du pool de connexions PostgreSQL (asyncpg)."""
+"""Management of the PostgreSQL connection pool (asyncpg)."""
 
 import asyncpg
 
@@ -17,7 +17,7 @@ _pool: asyncpg.Pool | None = None
 
 
 async def connect() -> None:
-    """Initialise le pool de connexions et crée la table si nécessaire."""
+    """Initializes the connection pool and creates the table if needed."""
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(
@@ -30,7 +30,7 @@ async def connect() -> None:
 
 
 async def disconnect() -> None:
-    """Ferme proprement le pool de connexions."""
+    """Cleanly closes the connection pool."""
     global _pool
     if _pool is not None:
         await _pool.close()
@@ -38,7 +38,7 @@ async def disconnect() -> None:
 
 
 def get_pool() -> asyncpg.Pool:
-    """Retourne le pool actif ou lève une erreur s'il n'est pas initialisé."""
+    """Returns the active pool or raises an error if it isn't initialized."""
     if _pool is None:
-        raise RuntimeError("Le pool PostgreSQL n'est pas initialisé.")
+        raise RuntimeError("The PostgreSQL pool is not initialized.")
     return _pool

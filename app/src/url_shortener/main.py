@@ -1,4 +1,4 @@
-"""Point d'entrée de l'API URL Shortener."""
+"""Entry point for the URL Shortener API."""
 
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -13,7 +13,7 @@ from .routes import router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Ouvre le pool PostgreSQL au démarrage et le ferme à l'arrêt."""
+    """Opens the PostgreSQL pool on startup and closes it on shutdown."""
     await db.connect()
     yield
     await db.disconnect()
@@ -24,13 +24,13 @@ app = FastAPI(title="URL Shortener", lifespan=lifespan)
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-    """Sonde de santé pour Kubernetes (liveness/readiness)."""
+    """Health probe for Kubernetes (liveness/readiness)."""
     return {"status": "ok"}
 
 
 @app.get("/metrics")
 async def metrics() -> Response:
-    """Expose les métriques au format Prometheus."""
+    """Exposes metrics in Prometheus format."""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

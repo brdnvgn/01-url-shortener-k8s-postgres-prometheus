@@ -1,4 +1,4 @@
-"""Tests d'intégration pour l'exposition des métriques (`GET /metrics`)."""
+"""Integration tests for metrics exposition (`GET /metrics`)."""
 
 import re
 
@@ -9,14 +9,14 @@ pytestmark = pytest.mark.usefixtures("clean_db")
 
 
 def _counter_value(metrics_text: str, metric_name: str) -> float:
-    """Extrait la valeur d'un compteur Prometheus (sans labels) depuis le texte brut."""
+    """Extracts the value of a Prometheus counter (without labels) from the raw text."""
     match = re.search(rf"^{metric_name} ([0-9.eE+-]+)$", metrics_text, re.MULTILINE)
-    assert match is not None, f"Métrique '{metric_name}' absente de la réponse /metrics"
+    assert match is not None, f"Metric '{metric_name}' missing from the /metrics response"
     return float(match.group(1))
 
 
 def test_metrics_endpoint_returns_prometheus_format(client: TestClient) -> None:
-    """La réponse doit être un contenu texte au format d'exposition Prometheus."""
+    """The response must be text content in Prometheus exposition format."""
     response = client.get("/metrics")
 
     assert response.status_code == 200
@@ -30,7 +30,7 @@ def test_metrics_endpoint_returns_prometheus_format(client: TestClient) -> None:
 
 
 def test_links_created_counter_increments_on_shorten(client: TestClient) -> None:
-    """Chaque appel réussi à POST /shorten doit incrémenter shortener_links_created_total."""
+    """Each successful call to POST /shorten must increment shortener_links_created_total."""
     before = _counter_value(client.get("/metrics").text, "shortener_links_created_total")
 
     client.post("/shorten", json={"url": "https://example.com/metrics-test-1"})
@@ -41,7 +41,7 @@ def test_links_created_counter_increments_on_shorten(client: TestClient) -> None
 
 
 def test_redirects_counter_increments_on_successful_redirect(client: TestClient) -> None:
-    """Chaque redirection réussie doit incrémenter shortener_redirects_total."""
+    """Each successful redirect must increment shortener_redirects_total."""
     code = client.post("/shorten", json={"url": "https://example.com/metrics-redirect"}).json()["code"]
 
     before = _counter_value(client.get("/metrics").text, "shortener_redirects_total")
@@ -54,7 +54,7 @@ def test_redirects_counter_increments_on_successful_redirect(client: TestClient)
 
 
 def test_redirects_counter_not_incremented_on_404(client: TestClient) -> None:
-    """Une redirection échouée (code inconnu) ne doit pas incrémenter shortener_redirects_total."""
+    """A failed redirect (unknown code) must not increment shortener_redirects_total."""
     before = _counter_value(client.get("/metrics").text, "shortener_redirects_total")
 
     client.get("/doesnotexist", follow_redirects=False)

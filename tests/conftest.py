@@ -1,4 +1,4 @@
-"""Fixtures partagées pour les tests unitaires et d'intégration."""
+"""Shared fixtures for unit and integration tests."""
 
 from collections.abc import AsyncIterator, Generator
 
@@ -13,18 +13,18 @@ from url_shortener.main import app
 
 @pytest.fixture(scope="session")
 def client() -> Generator[TestClient, None, None]:
-    """Client de test FastAPI. Déclenche le lifespan (connexion/déconnexion PostgreSQL)."""
+    """FastAPI test client. Triggers the lifespan (PostgreSQL connect/disconnect)."""
     with TestClient(app) as test_client:
         yield test_client
 
 
 @pytest_asyncio.fixture
 async def clean_db(client: TestClient) -> AsyncIterator[None]:
-    """Vide la table `links` avant chaque test pour garantir l'isolation des tests.
+    """Empties the `links` table before each test to guarantee test isolation.
 
-    Utilise une connexion asyncpg indépendante du pool de l'application (qui vit
-    dans la boucle d'événements interne du TestClient) afin d'éviter tout conflit
-    de boucle d'événements entre le test et l'app.
+    Uses an asyncpg connection independent from the application's pool (which
+    lives in the TestClient's internal event loop) to avoid any event loop
+    conflict between the test and the app.
     """
     conn = await asyncpg.connect(settings.database_url)
     try:

@@ -1,10 +1,10 @@
-"""Configuration de l'application (chargée depuis l'environnement)."""
+"""Application configuration (loaded from the environment)."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Paramètres de l'application, surchargés par les variables d'environnement."""
+    """Application settings, overridden by environment variables."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

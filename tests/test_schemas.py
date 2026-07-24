@@ -1,4 +1,4 @@
-"""Tests unitaires pour les schémas Pydantic (`schemas.py`)."""
+"""Unit tests for Pydantic schemas (`schemas.py`)."""
 
 import pytest
 from pydantic import ValidationError
@@ -7,7 +7,7 @@ from url_shortener.schemas import ShortenRequest, ShortenResponse
 
 
 def test_shorten_request_accepts_valid_url() -> None:
-    """Une URL valide doit être acceptée et exposée sous forme de chaîne."""
+    """A valid URL must be accepted and exposed as a string."""
     payload = ShortenRequest(url="https://example.com/some/path")
     assert str(payload.url) == "https://example.com/some/path"
 
@@ -22,13 +22,13 @@ def test_shorten_request_accepts_valid_url() -> None:
     ],
 )
 def test_shorten_request_rejects_invalid_url(invalid_url: str) -> None:
-    """Une chaîne qui n'est pas une URL valide doit lever une erreur de validation."""
+    """A string that isn't a valid URL must raise a validation error."""
     with pytest.raises(ValidationError):
         ShortenRequest(url=invalid_url)
 
 
 def test_shorten_response_serialization() -> None:
-    """La réponse doit exposer fidèlement le code et l'URL courte fournis."""
+    """The response must faithfully expose the provided code and short URL."""
     response = ShortenResponse(code="abc123", short_url="http://localhost:8000/abc123")
     assert response.model_dump() == {
         "code": "abc123",

@@ -1,7 +1,7 @@
 [project]
 name = "url-shortener"
 version = "0.1.0"
-description = "API de raccourcissement d'URL (FastAPI) pour Kubernetes + PostgreSQL + Prometheus"
+description = "URL shortener API (FastAPI) for Kubernetes + PostgreSQL + Prometheus"
 authors = [
     {name = "Brandon"}
 ]

@@ -1,16 +1,16 @@
-"""Schémas Pydantic pour les requêtes et réponses de l'API."""
+"""Pydantic schemas for API requests and responses."""
 
 from pydantic import BaseModel, HttpUrl
 
 
 class ShortenRequest(BaseModel):
-    """Corps de la requête POST /shorten."""
+    """Request body for POST /shorten."""
 
     url: HttpUrl
 
 
 class ShortenResponse(BaseModel):
-    """Réponse renvoyée après création d'un lien court."""
+    """Response returned after creating a short link."""
 
     code: str
     short_url: str

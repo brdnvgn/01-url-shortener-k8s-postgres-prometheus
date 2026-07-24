@@ -1,6 +1,6 @@
-"""Tests d'intégration pour la création de liens courts (`POST /shorten`).
+"""Integration tests for short link creation (`POST /shorten`).
 
-Nécessitent une vraie base PostgreSQL disponible (voir docker-compose.yml).
+Require a real PostgreSQL database available (see docker-compose.yml).
 """
 
 import re
@@ -16,20 +16,20 @@ _url_adapter: TypeAdapter[HttpUrl] = TypeAdapter(HttpUrl)
 
 
 def test_shorten_returns_201_with_valid_short_url(client: TestClient) -> None:
-    """La short_url renvoyée doit être une URL syntaxiquement valide."""
+    """The returned short_url must be a syntactically valid URL."""
     response = client.post("/shorten", json={"url": "https://example.com/some/very/long/path"})
 
     assert response.status_code == 201
     body = response.json()
 
     assert "code" in body and "short_url" in body
-    # Lève une ValidationError si l'URL n'est pas valide.
+    # Raises a ValidationError if the URL isn't valid.
     _url_adapter.validate_python(body["short_url"])
     assert body["short_url"].endswith(f"/{body['code']}")
 
 
 def test_shorten_returns_code_matching_route_pattern(client: TestClient) -> None:
-    """Le code généré doit respecter le pattern accepté par GET /{code}."""
+    """The generated code must match the pattern accepted by GET /{code}."""
     response = client.post("/shorten", json={"url": "https://example.com"})
 
     assert response.status_code == 201
@@ -38,14 +38,14 @@ def test_shorten_returns_code_matching_route_pattern(client: TestClient) -> None
 
 
 def test_shorten_rejects_invalid_url_with_422(client: TestClient) -> None:
-    """Une URL invalide dans le corps de la requête doit être rejetée (422)."""
+    """An invalid URL in the request body must be rejected (422)."""
     response = client.post("/shorten", json={"url": "not-a-valid-url"})
 
     assert response.status_code == 422
 
 
 def test_shorten_created_short_url_actually_resolves(client: TestClient) -> None:
-    """La short_url créée doit permettre, une fois appelée, de retomber sur l'URL d'origine."""
+    """The created short_url, once called, must resolve back to the original URL."""
     long_url = "https://example.com/target-page"
     create_response = client.post("/shorten", json={"url": long_url})
     code = create_response.json()["code"]
