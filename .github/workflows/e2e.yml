@@ -135,7 +135,7 @@ jobs:
   k8s-e2e:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
@@ -278,26 +278,33 @@ jobs:
 
       - name: Verify the ServiceMonitor target is up
         run: |
-          for i in $(seq 1 10); do
+          # The operator has to notice the new ServiceMonitor, regenerate
+          # Prometheus' config, have the config-reloader sidecar pick it up,
+          # and then wait for the next scrape (15s interval) -- give it a
+          # generous window rather than a fixed sleep.
+          for i in $(seq 1 40); do
             up=$( (curl -s http://localhost:9090/api/v1/targets \
               | jq -r '.data.activeTargets[]
                        | select(.labels.namespace=="url-shortener")
                        | .health' | head -n1) || true)
             [ "$up" = "up" ] && break
-            sleep 3
+            sleep 5
           done
+          if [ "$up" != "up" ]; then
+            echo "::group::Prometheus active targets (debug)"
+            curl -s http://localhost:9090/api/v1/targets | jq .
+            echo "::endgroup::"
+          fi
           test "$up" = "up"
 
       - name: Assert shortener_links_created_total increased
         run: |
-          # Give Prometheus a couple of scrape intervals (15s) to pick up
-          # the traffic generated above.
-          for i in $(seq 1 10); do
+          for i in $(seq 1 20); do
             value=$( (curl -s 'http://localhost:9090/api/v1/query' \
               --data-urlencode 'query=shortener_links_created_total' \
               | jq -r '.data.result[0].value[1] // "0"') || echo 0)
             python3 -c "exit(0 if float('$value') > 0 else 1)" && break
-            sleep 3
+            sleep 5
           done
           echo "shortener_links_created_total=$value"
           python3 -c "exit(0 if float('$value') > 0 else 1)"
@@ -326,3 +333,7 @@ jobs:
           kubectl -n url-shortener logs postgres-0 --tail=200 || true
           echo "--- monitoring pods ---"
           kubectl -n monitoring get pods -o wide || true
+          echo "--- servicemonitor ---"
+          kubectl -n url-shortener get servicemonitor url-shortener-api -o yaml || true
+          echo "--- prometheus-operator logs ---"
+          kubectl -n monitoring logs -l app=kube-prometheus-stack-operator --tail=200 || true
