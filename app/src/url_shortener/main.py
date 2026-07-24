@@ -24,7 +24,19 @@ app = FastAPI(title="URL Shortener", lifespan=lifespan)
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-    """Health probe for Kubernetes (liveness/readiness).
+    """Liveness probe for Kubernetes.
+
+    Only reports whether the process itself is up and able to serve HTTP
+    requests. It must not depend on PostgreSQL: a transient DB outage should
+    remove the pod from load balancing (see /readyz) without Kubernetes
+    restarting an otherwise healthy process.
+    """
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz() -> dict[str, str]:
+    """Readiness probe for Kubernetes.
 
     Verifies the PostgreSQL pool can actually serve a query, since /shorten
     and GET /{code} both depend on it: readiness must not report "ok" while

@@ -7,6 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # 1-10 alphanumeric characters, so code_length must stay within that range.
 MAX_CODE_LENGTH = 10
 
+# Top-level paths registered directly on the FastAPI app (see main.py), which
+# are matched before GET /{code}. A generated code equal to one of these would
+# create a short link that can never redirect, so they must be excluded from
+# code generation (see repository.create_short_link).
+RESERVED_CODES = {"healthz", "readyz", "metrics"}
+
 
 class Settings(BaseSettings):
     """Application settings, overridden by environment variables."""

@@ -2,6 +2,7 @@
 
 import asyncpg
 
+from .config import RESERVED_CODES
 from .db import get_pool
 from .shortener import generate_code
 
@@ -11,6 +12,9 @@ async def create_short_link(long_url: str, code_length: int, max_retries: int = 
     pool = get_pool()
     for _ in range(max_retries):
         code = generate_code(code_length)
+        if code in RESERVED_CODES:
+            # Would shadow a top-level route (e.g. /healthz) and never redirect.
+            continue
         try:
             await pool.execute(
                 "INSERT INTO links (code, long_url) VALUES ($1, $2)",

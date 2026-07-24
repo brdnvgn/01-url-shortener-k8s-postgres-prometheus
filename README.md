@@ -65,7 +65,8 @@ Minimal REST API (Node/Express, Go, or Python/FastAPI — your choice):
 - `POST /shorten` → `{ "url": "https://example.com/page" }` returns `{ "code": "ab12cd" }`
 - `GET /{code}` → redirects (HTTP 302) to the original URL
 - `GET /metrics` → metrics in Prometheus format (links created, redirects, latency)
-- `GET /healthz` → health probe for Kubernetes
+- `GET /healthz` → liveness probe for Kubernetes (process up, no dependency on PostgreSQL)
+- `GET /readyz` → readiness probe for Kubernetes (checks PostgreSQL connectivity)
 
 PostgreSQL table:
 

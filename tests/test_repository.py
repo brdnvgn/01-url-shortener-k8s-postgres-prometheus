@@ -55,6 +55,21 @@ async def test_create_short_link_raises_after_max_retries(monkeypatch: pytest.Mo
     assert fake_pool.execute.await_count == 3
 
 
+async def test_create_short_link_skips_reserved_codes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A generated code matching a reserved top-level path (e.g. "healthz")
+    must be skipped, since it would shadow that route and never redirect.
+    """
+    fake_pool = FakePool()
+    monkeypatch.setattr(repository, "get_pool", lambda: fake_pool)
+    codes = iter(["healthz", "ab12cd"])
+    monkeypatch.setattr(repository, "generate_code", lambda _length: next(codes))
+
+    code = await repository.create_short_link("https://example.com", code_length=6)
+
+    assert code == "ab12cd"
+    fake_pool.execute.assert_awaited_once()
+
+
 async def test_resolve_and_count_returns_long_url_when_found(monkeypatch: pytest.MonkeyPatch) -> None:
     """An existing code must return the associated long URL."""
     fake_pool = FakePool(fetchrow=AsyncMock(return_value={"long_url": "https://example.com"}))
