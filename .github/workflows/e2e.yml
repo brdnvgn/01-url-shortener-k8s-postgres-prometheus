@@ -1,0 +1,290 @@
+name: E2E (Docker + Kubernetes + Prometheus)
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "k8s/**"
+      - "monitoring/**"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - ".github/workflows/e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "k8s/**"
+      - "monitoring/**"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - ".github/workflows/e2e.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: url-shortener:0.1
+
+jobs:
+  # Builds the runtime image once and hands it to the other jobs as an
+  # artifact, so we build exactly what gets tested (no rebuild drift).
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/Dockerfile
+          failure-threshold: error
+
+      - name: Build image
+        run: docker build -t "$IMAGE" -f app/Dockerfile .
+
+      - name: Save image as artifact
+        run: docker save "$IMAGE" -o url-shortener.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: url-shortener-image
+          path: url-shortener.tar
+          retention-days: 1
+
+  # Container-level smoke test: run the built image directly (no k8s) against
+  # a real PostgreSQL instance and exercise every documented endpoint.
+  container-smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: url_shortener
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d url_shortener"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: url-shortener-image
+
+      - name: Load image
+        run: docker load -i url-shortener.tar
+
+      - name: Run container
+        run: |
+          docker run -d --name api --network host \
+            -e DATABASE_URL="postgresql://postgres:postgres@localhost:5432/url_shortener" \
+            -e CODE_LENGTH=6 \
+            -e POOL_MIN_SIZE=1 \
+            -e POOL_MAX_SIZE=10 \
+            "$IMAGE"
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/readyz; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API never became ready" >&2
+          exit 1
+
+      - name: Exercise /healthz, /shorten, redirect and /metrics
+        run: |
+          curl -sf http://localhost:8000/healthz
+
+          code=$(curl -sf -X POST http://localhost:8000/shorten \
+            -H "Content-Type: application/json" \
+            -d '{"url": "https://example.com/page"}' | jq -r .code)
+          test -n "$code" && test "$code" != "null"
+
+          status=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8000/$code")
+          test "$status" = "302"
+
+          curl -sf http://localhost:8000/metrics | grep -q '^shortener_links_created_total '
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker logs api
+
+  # Full end-to-end test on a real (local) Kubernetes cluster: deploys
+  # PostgreSQL + the API behind an Ingress exactly as described in the
+  # README, checks persistence across a Postgres restart, then installs
+  # kube-prometheus-stack and verifies the ServiceMonitor is scraped and the
+  # counters increase.
+  k8s-e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: url-shortener-image
+
+      - name: Load image
+        run: docker load -i url-shortener.tar
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: url-shortener
+          config: k8s/kind-cluster.yaml
+
+      - name: Load image into kind
+        run: kind load docker-image "$IMAGE" --name url-shortener
+
+      - name: Install ingress-nginx
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=180s
+
+      - name: Deploy application manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/secret.yaml -f k8s/configmap.yaml
+          kubectl apply -f k8s/postgres-statefulset.yaml -f k8s/postgres-service.yaml
+          kubectl apply -f k8s/api-deployment.yaml -f k8s/api-service.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Wait for rollout
+        run: |
+          kubectl -n url-shortener rollout status statefulset/postgres --timeout=120s
+          kubectl -n url-shortener rollout status deployment/url-shortener-api --timeout=180s
+
+      - name: Test API through the Ingress
+        run: |
+          curl -sf --resolve shortener.localtest.me:80:127.0.0.1 http://shortener.localtest.me/healthz
+          curl -sf --resolve shortener.localtest.me:80:127.0.0.1 http://shortener.localtest.me/readyz
+
+          code=$(curl -sf --resolve shortener.localtest.me:80:127.0.0.1 \
+            -X POST http://shortener.localtest.me/shorten \
+            -H "Content-Type: application/json" \
+            -d '{"url": "https://example.com/page"}' | jq -r .code)
+          test -n "$code" && test "$code" != "null"
+          echo "CODE=$code" >> "$GITHUB_ENV"
+
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            --resolve shortener.localtest.me:80:127.0.0.1 \
+            "http://shortener.localtest.me/$code")
+          test "$status" = "302"
+
+      - name: Test PostgreSQL persistence across a pod restart
+        run: |
+          kubectl -n url-shortener delete pod postgres-0
+          kubectl -n url-shortener wait --for=condition=ready pod/postgres-0 --timeout=90s
+          # The API's DB pool must reconnect and the previously created code
+          # must still redirect correctly once Postgres is back up.
+          for i in $(seq 1 15); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' \
+              --resolve shortener.localtest.me:80:127.0.0.1 \
+              "http://shortener.localtest.me/$CODE" || true)
+            [ "$status" = "302" ] && break
+            sleep 2
+          done
+          test "$status" = "302"
+
+      - name: Install kube-prometheus-stack
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          helm install monitoring prometheus-community/kube-prometheus-stack \
+            --namespace monitoring --create-namespace \
+            -f monitoring/kube-prometheus-stack.values.yaml \
+            --set kubeStateMetrics.enabled=false \
+            --set nodeExporter.enabled=false \
+            --wait --timeout 8m
+
+      - name: Apply ServiceMonitor
+        run: kubectl apply -f monitoring/servicemonitor.yaml
+
+      - name: Generate traffic
+        run: |
+          for i in $(seq 1 10); do
+            curl -sf --resolve shortener.localtest.me:80:127.0.0.1 \
+              -X POST http://shortener.localtest.me/shorten \
+              -H "Content-Type: application/json" \
+              -d '{"url": "https://example.com/page"}' > /dev/null
+          done
+
+      - name: Port-forward Prometheus
+        run: |
+          kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090 &
+          echo $! > pf.pid
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:9090/-/ready && exit 0
+            sleep 3
+          done
+          echo "Prometheus never became ready" >&2
+          exit 1
+
+      - name: Verify the ServiceMonitor target is up
+        run: |
+          for i in $(seq 1 10); do
+            up=$( (curl -s http://localhost:9090/api/v1/targets \
+              | jq -r '.data.activeTargets[]
+                       | select(.labels.namespace=="url-shortener")
+                       | .health' | head -n1) || true)
+            [ "$up" = "up" ] && break
+            sleep 3
+          done
+          test "$up" = "up"
+
+      - name: Assert shortener_links_created_total increased
+        run: |
+          # Give Prometheus a couple of scrape intervals (15s) to pick up
+          # the traffic generated above.
+          for i in $(seq 1 10); do
+            value=$( (curl -s 'http://localhost:9090/api/v1/query' \
+              --data-urlencode 'query=shortener_links_created_total' \
+              | jq -r '.data.result[0].value[1] // "0"') || echo 0)
+            python3 -c "exit(0 if float('$value') > 0 else 1)" && break
+            sleep 3
+          done
+          echo "shortener_links_created_total=$value"
+          python3 -c "exit(0 if float('$value') > 0 else 1)"
+
+      - name: Stop port-forward
+        if: always()
+        run: kill "$(cat pf.pid)" 2>/dev/null || true
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          echo "--- url-shortener pods ---"
+          kubectl -n url-shortener get pods -o wide
+          echo "--- url-shortener describe ---"
+          kubectl -n url-shortener describe pods
+          echo "--- api logs ---"
+          kubectl -n url-shortener logs -l app.kubernetes.io/name=url-shortener-api --all-containers --tail=200
+          echo "--- postgres logs ---"
+          kubectl -n url-shortener logs postgres-0 --tail=200
+          echo "--- monitoring pods ---"
+          kubectl -n monitoring get pods -o wide
