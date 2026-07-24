@@ -55,13 +55,17 @@ async def test_create_short_link_raises_after_max_retries(monkeypatch: pytest.Mo
     assert fake_pool.execute.await_count == 3
 
 
-async def test_create_short_link_skips_reserved_codes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A generated code matching a reserved top-level path (e.g. "healthz")
-    must be skipped, since it would shadow that route and never redirect.
+@pytest.mark.parametrize("reserved_code", sorted(repository.RESERVED_CODES))
+async def test_create_short_link_skips_reserved_codes(
+    monkeypatch: pytest.MonkeyPatch, reserved_code: str
+) -> None:
+    """A generated code matching a reserved top-level path (e.g. "healthz",
+    "docs") must be skipped, since it would shadow that route (app-level
+    endpoint or FastAPI's built-in docs) and never redirect.
     """
     fake_pool = FakePool()
     monkeypatch.setattr(repository, "get_pool", lambda: fake_pool)
-    codes = iter(["healthz", "ab12cd"])
+    codes = iter([reserved_code, "ab12cd"])
     monkeypatch.setattr(repository, "generate_code", lambda _length: next(codes))
 
     code = await repository.create_short_link("https://example.com", code_length=6)

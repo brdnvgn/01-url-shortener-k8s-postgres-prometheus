@@ -7,11 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # 1-10 alphanumeric characters, so code_length must stay within that range.
 MAX_CODE_LENGTH = 10
 
-# Top-level paths registered directly on the FastAPI app (see main.py), which
-# are matched before GET /{code}. A generated code equal to one of these would
-# create a short link that can never redirect, so they must be excluded from
-# code generation (see repository.create_short_link).
-RESERVED_CODES = {"healthz", "readyz", "metrics"}
+# Single-segment, alphanumeric top-level paths matched before GET /{code}:
+# our own probes/metrics endpoints (main.py) plus FastAPI's built-in docs
+# routes (/docs, /redoc — /openapi.json and /docs/oauth2-redirect can't
+# collide since the {code} pattern below forbids dots and multiple segments).
+# A generated code equal to one of these would create a short link that can
+# never redirect, so they must be excluded from code generation (see
+# repository.create_short_link).
+RESERVED_CODES = {"healthz", "readyz", "metrics", "docs", "redoc"}
 
 
 class Settings(BaseSettings):
