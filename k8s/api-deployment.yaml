@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: url-shortener-api
+  namespace: url-shortener
+  labels:
+    app.kubernetes.io/name: url-shortener-api
+    app.kubernetes.io/part-of: url-shortener
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: url-shortener-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: url-shortener-api
+        app.kubernetes.io/part-of: url-shortener
+    spec:
+      # The API opens the DB pool on startup; block until Postgres accepts
+      # connections so pods start cleanly instead of crash-looping.
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -p 5432 -U postgres; do
+                echo "waiting for postgres..."; sleep 2;
+              done
+      containers:
+        - name: api
+          image: url-shortener:0.1
+          # Image is side-loaded into kind, so never try to pull from a registry.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: url-shortener-config
+            - secretRef:
+                name: url-shortener-secrets
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

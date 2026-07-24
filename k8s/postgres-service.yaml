@@ -1,0 +1,18 @@
+# Headless Service: gives the StatefulSet a stable DNS name
+# (postgres.url-shortener.svc.cluster.local) for the API to connect to.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: url-shortener
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: url-shortener
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: url-shortener-config
+  namespace: url-shortener
+  labels:
+    app.kubernetes.io/part-of: url-shortener
+data:
+  CODE_LENGTH: "6"
+  POOL_MIN_SIZE: "1"
+  POOL_MAX_SIZE: "10"
+  # Externally visible base URL (the Ingress host). shortener.localtest.me
+  # resolves to 127.0.0.1, so no /etc/hosts edit is needed with kind.
+  PUBLIC_BASE_URL: http://shortener.localtest.me

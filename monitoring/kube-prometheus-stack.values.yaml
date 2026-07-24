@@ -1,0 +1,23 @@
+# Lean values for the kube-prometheus-stack Helm chart in this local lab.
+# Grafana and Alertmanager are disabled to keep image pulls and resource
+# usage low; the focus is Prometheus scraping the API via the ServiceMonitor.
+grafana:
+  enabled: false
+
+alertmanager:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    # Short retention: this is a throwaway local cluster.
+    retention: 2h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 384Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
+    # Select ServiceMonitors labelled `release: monitoring` (the default when
+    # nil uses Helm values) — matches monitoring/servicemonitor.yaml.
+    serviceMonitorSelectorNilUsesHelmValues: true
